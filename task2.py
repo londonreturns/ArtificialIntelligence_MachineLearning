@@ -47,8 +47,12 @@ def count_images(directory):
     return total_images, class_counts
 
 
-def visualize_samples(train_path):
-    """Visualize sample images from each class"""
+def visualize_samples(train_path, title="Sample Images"):
+    """Visualize sample images from each class and save to output directory"""
+    # Create output directory if it doesn't exist
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+
     class_dirs = os.listdir(train_path)
     images = []
     labels = []
@@ -82,6 +86,12 @@ def visualize_samples(train_path):
         axes[j].axis('off')
 
     plt.tight_layout()
+
+    # Save the figure to the output directory
+    filename = f"{output_dir}\\{title.replace(' ', '_')}_samples.png"
+    plt.savefig(filename)
+    print(f"Saved sample images visualization to {filename}")
+
     plt.show()
 
 
@@ -129,8 +139,8 @@ def generate_augmented_images(input_base_dir, output_base_dir):
     total_processed = 0
     total_augmented = 0
 
-    # Process each dataset directory separately to respect the validation split
-    for dataset_dir in ['train', 'val', 'test']:
+    # Process each dataset directory
+    for dataset_dir in ['train', 'test']:
         dataset_path = os.path.join(input_base_dir, dataset_dir)
 
         # Skip if the directory doesn't exist
@@ -402,7 +412,6 @@ def main():
 
     train_path = os.path.join(path, 'train')
     test_path = os.path.join(path, 'test')
-    val_path = os.path.join(path, 'val')
 
     # Getting the number of classes and their names
     classes = os.listdir(train_path)
@@ -414,12 +423,14 @@ def main():
     # Counting images in each dataset
     train_total, train_counts = count_images(train_path)
     test_total, test_counts = count_images(test_path)
-    val_total, val_counts = count_images(val_path) if os.path.exists(val_path) else (0, {})
 
-    print(f'Number of training images: {train_total}')
-    print(f'Number of validation images: {val_total}')
+    print(f'Number of training images: {train_total} (80% used for training, 20% for validation)')
     print(f'Number of test images: {test_total}')
-    print(f'Total number of images: {train_total + val_total + test_total}')
+    print(f'Total number of images: {train_total + test_total}')
+
+    # Visualize sample images from each class
+    visualize_samples(train_path, "Training Data")
+    visualize_samples(test_path, "Test Data")
 
     # Generate augmented images
     input_base_dir = os.path.join('data', 'pest')
@@ -556,6 +567,7 @@ def main():
 
     train_datagen_pretrained = ImageDataGenerator(
         preprocessing_function=preprocess_input,
+        validation_split=0.2,
         rotation_range=20,
         width_shift_range=0.2,
         height_shift_range=0.2,
@@ -575,15 +587,17 @@ def main():
         target_size=(IMG_HEIGHT, IMG_WIDTH),
         batch_size=BATCH_SIZE,
         class_mode='categorical',
-        shuffle=True
+        shuffle=True,
+        subset='training'
     )
 
-    validation_generator_pretrained = val_test_datagen_pretrained.flow_from_directory(
-        val_path,
+    validation_generator_pretrained = train_datagen_pretrained.flow_from_directory(
+        train_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
         batch_size=BATCH_SIZE,
         class_mode='categorical',
-        shuffle=False
+        shuffle=False,
+        subset='validation'
     )
 
     test_generator_pretrained = val_test_datagen_pretrained.flow_from_directory(
