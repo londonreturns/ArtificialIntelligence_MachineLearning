@@ -406,7 +406,6 @@ def plot_loss_accuracy(history):
 def main():
     # Dataset path
     path = os.path.join('data', 'pest')
-    train_path = os.path.join(path, 'train')
     
     train_path = os.path.join(path, 'train')
     test_path = os.path.join(path, 'test')
@@ -433,8 +432,8 @@ def main():
     create_validation_split(train_path, val_path, val_size=0.2)
     
     # Generate augmented images
-    input_base_dir = 'data\\pest'
-    output_base_dir = 'data\\augmented_images\\pest'
+    input_base_dir = os.path.join('data', 'pest')
+    output_base_dir = os.path.join('data', 'augmented_images', 'pest')
     generate_augmented_images(input_base_dir, output_base_dir)
     
     # Define image size for the model
