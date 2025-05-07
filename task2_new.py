@@ -90,7 +90,7 @@ def visualize_samples(train_path, title="Sample Images"):
     plt.tight_layout()
 
     # Save the figure to the output directory
-    filename = f"{output_dir}\\{title.replace(' ', '_')}_samples.png"
+    filename = os.path.join(output_dir, f"{title.replace(' ', '_')}_samples.png")
     plt.savefig(filename)
     print(f"Saved sample images visualization to {filename}")
 
@@ -363,7 +363,7 @@ def plot_training_history(history, title):
     plt.tight_layout()
 
     # Save the figure to the output directory
-    filename = f"{output_dir}\\{title.replace(' ', '_')}_history.png"
+    filename = os.path.join(output_dir, f"{title.replace(' ', '_')}_history.png")
     plt.savefig(filename)
     print(f"Saved training history plot to {filename}")
 
@@ -400,7 +400,7 @@ def plot_loss_accuracy(history, title="Model"):
     plt.legend()
 
     # Save the figure to the output directory
-    filename = f"{output_dir}\\{title.replace(' ', '_')}_loss_accuracy.png"
+    filename = os.path.join(output_dir, f"{title.replace(' ', '_')}_loss_accuracy.png")
     plt.savefig(filename)
     print(f"Saved {title} loss and accuracy plot to {filename}")
 
@@ -446,7 +446,7 @@ def plot_confusion_matrix(cm, class_names, title):
     plt.xlabel('Predicted label')
 
     # Save the figure to the output directory
-    filename = f"{output_dir}\\{title.replace(' ', '_')}_confusion_matrix.png"
+    filename = os.path.join(output_dir, f"{title.replace(' ', '_')}_confusion_matrix.png")
     plt.savefig(filename)
     print(f"Saved confusion matrix plot to {filename}")
 
