@@ -419,7 +419,8 @@ def plot_loss_accuracy(history):
 
 def main():
     # Dataset path
-    path = 'data\\pest'
+    path = os.path.join('data', 'pest')
+    train_path = os.path.join(path, 'train')
     
     train_path = os.path.join(path, 'train')
     test_path = os.path.join(path, 'test')
