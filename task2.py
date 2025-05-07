@@ -5,7 +5,7 @@
 Image Classification with Convolutional Neural Network
 
 This script implements a comprehensive end-to-end deep learning project for image classification.
-The objective is to deepen understanding of the entire deep learning pipeline, from data
+The goal is to deepen understanding of the entire deep learning pipeline, from data
 preprocessing to model building and evaluation.
 
 The script has two parts:
@@ -17,9 +17,6 @@ The script has two parts:
 import matplotlib.pyplot as plt
 import os
 import random
-import shutil
-from sklearn.model_selection import train_test_split
-from pathlib import Path
 from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -29,6 +26,10 @@ from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.metrics import Precision, Recall, F1Score
 from tensorflow.keras.regularizers import l2
+from tensorflow.keras.layers import Rescaling
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.applications.vgg16 import preprocess_input
+from tensorflow.keras.layers import GlobalAveragePooling2D, Input
 from sklearn.metrics import classification_report, confusion_matrix
 import time
 
@@ -106,34 +107,6 @@ def check_corrupted_images(directory):
         print(f"No corrupted images found in {directory}")
     else:
         print(f"Found {corrupted_count} corrupted images in {directory}")
-
-
-def create_validation_split(train_dir, val_dir, val_size=0.2):
-    """Create a validation split from the training data"""
-    # Check if validation directory already has data
-    if os.path.exists(val_dir) and any(os.scandir(val_dir)):
-        print("Validation directory already exists and contains data. Skipping split creation.")
-        return
-
-    print("Creating validation split...")
-    Path(val_dir).mkdir(parents=True, exist_ok=True)
-
-    for class_name in os.listdir(train_dir):
-        class_path = Path(train_dir) / class_name
-        if class_path.is_dir():
-            img_paths = [class_path / img_name for img_name in os.listdir(class_path)]
-
-            train_paths, val_paths = train_test_split(
-                img_paths, test_size=val_size, random_state=42
-            )
-
-            val_class_path = Path(val_dir) / class_name
-            val_class_path.mkdir(parents=True, exist_ok=True)
-
-            for val_img in val_paths:
-                shutil.move(str(val_img), str(val_class_path / val_img.name))
-
-    print("Validation split created successfully.")
 
 
 def generate_augmented_images(input_base_dir, output_base_dir):
@@ -274,47 +247,37 @@ def create_baseline_model(input_shape, num_classes):
 
 
 def create_deeper_model(input_shape, num_classes):
-    """Create a regularized deeper CNN model to reduce overfitting"""
-    # Create the model using Sequential
-    model = Sequential()
+    """Create a deeper CNN model with specified architecture"""
+    model = Sequential([
+        Input(shape=input_shape),
+        Rescaling(1. / 255),
 
-    # Add Input layer first
-    model.add(Input(shape=input_shape))
+        # Repeat the block 3 times
+        Conv2D(128, (3, 3), padding='same', activation=None),
+        BatchNormalization(),
+        Dropout(0.25),
+        tf.keras.layers.Activation('relu'),
+        MaxPooling2D((2, 2)),
 
-    # First convolutional block
-    model.add(Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(BatchNormalization())
-    model.add(Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(MaxPooling2D((2, 2)))
-    model.add(Dropout(0.3))
+        Conv2D(128, (3, 3), padding='same', activation=None),
+        BatchNormalization(),
+        Dropout(0.25),
+        tf.keras.layers.Activation('relu'),
+        MaxPooling2D((2, 2)),
 
-    # Second convolutional block
-    model.add(Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(BatchNormalization())
-    model.add(Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(MaxPooling2D((2, 2)))
-    model.add(Dropout(0.3))
+        Conv2D(128, (3, 3), padding='same', activation=None),
+        BatchNormalization(),
+        Dropout(0.25),
+        tf.keras.layers.Activation('relu'),
+        MaxPooling2D((2, 2)),
 
-    # Third convolutional block
-    model.add(Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(BatchNormalization())
-    model.add(Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
-    model.add(MaxPooling2D((2, 2)))
-    model.add(Dropout(0.4))
+        Flatten(),
+        Dense(256, activation='relu'),
+        Dense(128, activation='relu'),
+        Dense(64, activation='relu'),
+        Dense(num_classes, activation='softmax')
+    ])
 
-    # Flatten and Dense layers
-    model.add(Flatten())
-    model.add(Dense(256, activation='relu', kernel_regularizer=l2(0.001)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(128, activation='relu', kernel_regularizer=l2(0.001)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(num_classes, activation='softmax'))
-
-    # Compile the model
     model.compile(
         optimizer=Adam(learning_rate=0.0005),
         loss='categorical_crossentropy',
@@ -326,9 +289,6 @@ def create_deeper_model(input_shape, num_classes):
 
 def create_vgg16_model(input_shape, num_classes, trainable=False):
     """Create a model using VGG16 pre-trained base model"""
-    from tensorflow.keras.applications import VGG16
-    from tensorflow.keras.applications.vgg16 import preprocess_input
-    from tensorflow.keras.layers import GlobalAveragePooling2D, Input
 
     # Define input tensor
     inputs = Input(shape=input_shape)
@@ -371,7 +331,7 @@ def plot_training_history(history, title):
 
     plt.figure(figsize=(12, 5))
 
-    # Plot training & validation accuracy
+    # Plot training and validation accuracy
     plt.subplot(1, 2, 1)
     plt.plot(history.history['accuracy'])
     plt.plot(history.history['val_accuracy'])
@@ -380,7 +340,7 @@ def plot_training_history(history, title):
     plt.xlabel('Epoch')
     plt.legend(['Train', 'Validation'], loc='upper left')
 
-    # Plot training & validation loss
+    # Plot training and validation loss
     plt.subplot(1, 2, 2)
     plt.plot(history.history['loss'])
     plt.plot(history.history['val_loss'])
@@ -461,9 +421,6 @@ def main():
     print(f'Number of test images: {test_total}')
     print(f'Total number of images: {train_total + val_total + test_total}')
 
-    # Create validation split if needed
-    create_validation_split(train_path, val_path, val_size=0.2)
-
     # Generate augmented images
     input_base_dir = os.path.join('data', 'pest')
     output_base_dir = os.path.join('data', 'augmented_images', 'pest')
@@ -474,9 +431,9 @@ def main():
     IMG_WIDTH = 224
     BATCH_SIZE = 32
 
-    # Data generators with augmentation for training
     train_datagen = ImageDataGenerator(
         rescale=1. / 255,
+        validation_split=0.2,
         rotation_range=20,
         width_shift_range=0.2,
         height_shift_range=0.2,
@@ -486,25 +443,25 @@ def main():
         fill_mode='nearest'
     )
 
-    # Only rescaling for validation and test data
-    val_test_datagen = ImageDataGenerator(rescale=1. / 255)
-
-    # Create data generators
     train_generator = train_datagen.flow_from_directory(
         train_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
         batch_size=BATCH_SIZE,
         class_mode='categorical',
-        shuffle=True
+        shuffle=True,
+        subset='training'
     )
 
-    validation_generator = val_test_datagen.flow_from_directory(
-        val_path,
+    validation_generator = train_datagen.flow_from_directory(
+        train_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
         batch_size=BATCH_SIZE,
         class_mode='categorical',
-        shuffle=False
+        shuffle=False,
+        subset='validation'
     )
+
+    val_test_datagen = ImageDataGenerator(rescale=1. / 255)
 
     test_generator = val_test_datagen.flow_from_directory(
         test_path,
@@ -596,7 +553,6 @@ def main():
     plot_loss_accuracy(deeper_history, 'Deeper Model')
 
     # Create data generators with appropriate preprocessing for the pre-trained model
-    from tensorflow.keras.applications.vgg16 import preprocess_input
 
     train_datagen_pretrained = ImageDataGenerator(
         preprocessing_function=preprocess_input,
@@ -739,68 +695,17 @@ def main():
     print(f"Test Accuracy: {baseline_evaluation[1]:.4f}")
     print(f"Test F1 Score: {baseline_evaluation[3]:.4f}")
 
-    # Generate predictions for baseline model
-    test_generator.reset()
-    y_pred_baseline = baseline_model.predict(test_generator, steps=len(test_generator))
-    y_pred_baseline_classes = y_pred_baseline.argmax(axis=1)
-
-    # Get true labels
-    y_true = test_generator.classes
-
-    # Get class names
-    class_names = list(test_generator.class_indices.keys())
-
-    # Display classification report
-    print("\nClassification Report (Baseline Model):")
-    print(classification_report(y_true, y_pred_baseline_classes, target_names=class_names))
-
-    # Display confusion matrix
-    print("\nConfusion Matrix (Baseline Model):")
-    cm = confusion_matrix(y_true, y_pred_baseline_classes)
-    print(cm)
-
     print("\nEvaluating Deeper Model:")
     deeper_evaluation = deeper_model.evaluate(test_generator)
     print(f"Test Loss: {deeper_evaluation[0]:.4f}")
     print(f"Test Accuracy: {deeper_evaluation[1]:.4f}")
     print(f"Test F1 Score: {deeper_evaluation[3]:.4f}")
 
-    # Generate predictions for deeper model
-    test_generator.reset()
-    y_pred_deeper = deeper_model.predict(test_generator, steps=len(test_generator))
-    y_pred_deeper_classes = y_pred_deeper.argmax(axis=1)
-
-    # Display classification report
-    print("\nClassification Report (Deeper Model):")
-    print(classification_report(y_true, y_pred_deeper_classes, target_names=class_names))
-
-    # Display confusion matrix
-    print("\nConfusion Matrix (Deeper Model):")
-    cm = confusion_matrix(y_true, y_pred_deeper_classes)
-    print(cm)
-
     print("\nEvaluating Fine-tuned VGG16 Model:")
     pretrained_evaluation = pretrained_model.evaluate(test_generator_pretrained)
     print(f"Test Loss: {pretrained_evaluation[0]:.4f}")
     print(f"Test Accuracy: {pretrained_evaluation[1]:.4f}")
     print(f"Test F1 Score: {pretrained_evaluation[3]:.4f}")
-
-    # Generate predictions for fine-tuned VGG16 model
-    test_generator_pretrained.reset()
-    y_pred_pretrained = pretrained_model.predict(test_generator_pretrained, steps=len(test_generator_pretrained))
-    y_pred_pretrained_classes = y_pred_pretrained.argmax(axis=1)
-
-    # Get true labels for pretrained model
-    y_true_pretrained = test_generator_pretrained.classes
-
-    # Display classification report
-    print("\nClassification Report (Fine-tuned VGG16 Model):")
-    print(classification_report(y_true_pretrained, y_pred_pretrained_classes, target_names=class_names))
-
-    # Display confusion matrix
-    print("\nConfusion Matrix (Fine-tuned VGG16 Model):")
-    cm = confusion_matrix(y_true_pretrained, y_pred_pretrained_classes)
-    print(cm)
 
     print("\nTraining Time Comparison:")
     print(f"Baseline Model: {baseline_training_time:.2f} seconds")
