@@ -5,7 +5,7 @@
 Image Classification with Convolutional Neural Network
 
 This script implements a comprehensive end-to-end deep learning project for image classification.
-The objective is to deepen understanding of the entire deep learning pipeline, from data 
+The objective is to deepen understanding of the entire deep learning pipeline, from data
 preprocessing to model building and evaluation.
 
 The script has two parts:
@@ -145,7 +145,7 @@ def generate_augmented_images(input_base_dir, output_base_dir):
         height_shift_range=0.2,
         zoom_range=0.2,
         horizontal_flip=True,
-        rescale=1./255
+        rescale=1. / 255
     )
 
     # Counter for processed images
@@ -177,11 +177,12 @@ def generate_augmented_images(input_base_dir, output_base_dir):
             print(f"Processing directory: {dataset_dir}/{class_dir}")
 
             # Get all image files in this class directory
-            image_files = [f for f in os.listdir(class_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif'))]
+            image_files = [f for f in os.listdir(class_path) if
+                           f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif'))]
 
             for idx, filename in enumerate(image_files):
                 if idx % 10 == 0:
-                    print(f"  Processing image {idx+1}/{len(image_files)} in {dataset_dir}/{class_dir}")
+                    print(f"  Processing image {idx + 1}/{len(image_files)} in {dataset_dir}/{class_dir}")
 
                 image_path = os.path.join(class_path, filename)
 
@@ -212,7 +213,7 @@ def generate_augmented_images(input_base_dir, output_base_dir):
                         augmented_image_uint8 = (augmented_image * 255).astype('uint8')
 
                         # Save the augmented image
-                        aug_output_path = os.path.join(output_dir, f"{file_basename}_aug_{i-1}.jpg")
+                        aug_output_path = os.path.join(output_dir, f"{file_basename}_aug_{i - 1}.jpg")
                         Image.fromarray(augmented_image_uint8).save(aug_output_path, quality=95)
                         total_augmented += 1
 
@@ -316,7 +317,7 @@ def create_vgg16_model(input_shape, num_classes, trainable=False):
     from tensorflow.keras.applications import VGG16
     from tensorflow.keras.applications.vgg16 import preprocess_input
     from tensorflow.keras.layers import GlobalAveragePooling2D, Input
-    
+
     # Define input tensor
     inputs = Input(shape=input_shape)
 
@@ -407,44 +408,44 @@ def plot_loss_accuracy(history):
 def main():
     # Dataset path
     path = os.path.join('data', 'pest')
-    
+
     train_path = os.path.join(path, 'train')
     test_path = os.path.join(path, 'test')
     val_path = os.path.join(path, 'val')
-    
+
     # Getting the number of classes and their names
     classes = os.listdir(train_path)
     num_classes = len(classes)
-    
+
     print(f'Total number of classes: {num_classes}')
     print(f'Classes: {classes}')
-    
+
     # Counting images in each dataset
     train_total, train_counts = count_images(train_path)
     test_total, test_counts = count_images(test_path)
     val_total, val_counts = count_images(val_path) if os.path.exists(val_path) else (0, {})
-    
+
     print(f'Number of training images: {train_total}')
     print(f'Number of validation images: {val_total}')
     print(f'Number of test images: {test_total}')
     print(f'Total number of images: {train_total + val_total + test_total}')
-    
+
     # Create validation split if needed
     create_validation_split(train_path, val_path, val_size=0.2)
-    
+
     # Generate augmented images
     input_base_dir = os.path.join('data', 'pest')
     output_base_dir = os.path.join('data', 'augmented_images', 'pest')
     generate_augmented_images(input_base_dir, output_base_dir)
-    
+
     # Define image size for the model
     IMG_HEIGHT = 224
     IMG_WIDTH = 224
     BATCH_SIZE = 32
-    
+
     # Data generators with augmentation for training
     train_datagen = ImageDataGenerator(
-        rescale=1./255,
+        rescale=1. / 255,
         rotation_range=20,
         width_shift_range=0.2,
         height_shift_range=0.2,
@@ -453,10 +454,10 @@ def main():
         horizontal_flip=True,
         fill_mode='nearest'
     )
-    
+
     # Only rescaling for validation and test data
-    val_test_datagen = ImageDataGenerator(rescale=1./255)
-    
+    val_test_datagen = ImageDataGenerator(rescale=1. / 255)
+
     # Create data generators
     train_generator = train_datagen.flow_from_directory(
         train_path,
@@ -465,7 +466,7 @@ def main():
         class_mode='categorical',
         shuffle=True
     )
-    
+
     validation_generator = val_test_datagen.flow_from_directory(
         val_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -473,7 +474,7 @@ def main():
         class_mode='categorical',
         shuffle=False
     )
-    
+
     test_generator = val_test_datagen.flow_from_directory(
         test_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -481,31 +482,31 @@ def main():
         class_mode='categorical',
         shuffle=False
     )
-    
+
     # Create the baseline model
     input_shape = (IMG_HEIGHT, IMG_WIDTH, 3)  # RGB images
     baseline_model = create_baseline_model(input_shape, num_classes)
-    
+
     # Define callbacks
     early_stopping = EarlyStopping(
         monitor='val_loss',
         patience=5,
         restore_best_weights=True
     )
-    
+
     checkpoint = ModelCheckpoint(
         'baseline_model_best.h5',
         monitor='val_accuracy',
         save_best_only=True,
         mode='max'
     )
-    
+
     # Train the baseline model
     EPOCHS = 20
-    
+
     # Record start time
     start_time = time.time()
-    
+
     baseline_history = baseline_model.fit(
         train_generator,
         steps_per_epoch=train_generator.samples // BATCH_SIZE,
@@ -514,38 +515,38 @@ def main():
         validation_steps=validation_generator.samples // BATCH_SIZE,
         callbacks=[early_stopping, checkpoint]
     )
-    
+
     # Record end time
     baseline_training_time = time.time() - start_time
     print(f"Baseline model training time: {baseline_training_time:.2f} seconds")
-    
+
     # Plot the training history for the baseline model
     plot_training_history(baseline_history, 'Baseline Model')
     plot_loss_accuracy(baseline_history)
-    
+
     # Create the deeper model
     deeper_model = create_deeper_model(input_shape, num_classes)
-    
+
     # Define callbacks for the deeper model
     early_stopping_deeper = EarlyStopping(
         monitor='val_loss',
         patience=10,
         restore_best_weights=True
     )
-    
+
     checkpoint_deeper = ModelCheckpoint(
         'deeper_model_best.h5',
         monitor='val_accuracy',
         save_best_only=True,
         mode='max'
     )
-    
+
     # Train the deeper model
     EPOCHS_DEEPER = 30
-    
+
     # Record start time
     start_time_deeper = time.time()
-    
+
     deeper_history = deeper_model.fit(
         train_generator,
         steps_per_epoch=train_generator.samples // BATCH_SIZE,
@@ -554,18 +555,18 @@ def main():
         validation_steps=validation_generator.samples // BATCH_SIZE,
         callbacks=[early_stopping_deeper, checkpoint_deeper]
     )
-    
+
     # Record end time
     deeper_training_time = time.time() - start_time_deeper
     print(f"Deeper model training time: {deeper_training_time:.2f} seconds")
-    
+
     # Plot the training history for the deeper model
     plot_training_history(deeper_history, 'Deeper Model')
     plot_loss_accuracy(deeper_history)
-    
+
     # Create data generators with appropriate preprocessing for the pre-trained model
     from tensorflow.keras.applications.vgg16 import preprocess_input
-    
+
     train_datagen_pretrained = ImageDataGenerator(
         preprocessing_function=preprocess_input,
         rotation_range=20,
@@ -576,11 +577,11 @@ def main():
         horizontal_flip=True,
         fill_mode='nearest'
     )
-    
+
     val_test_datagen_pretrained = ImageDataGenerator(
         preprocessing_function=preprocess_input
     )
-    
+
     # Create data generators
     train_generator_pretrained = train_datagen_pretrained.flow_from_directory(
         train_path,
@@ -589,7 +590,7 @@ def main():
         class_mode='categorical',
         shuffle=True
     )
-    
+
     validation_generator_pretrained = val_test_datagen_pretrained.flow_from_directory(
         val_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -597,7 +598,7 @@ def main():
         class_mode='categorical',
         shuffle=False
     )
-    
+
     test_generator_pretrained = val_test_datagen_pretrained.flow_from_directory(
         test_path,
         target_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -605,34 +606,34 @@ def main():
         class_mode='categorical',
         shuffle=False
     )
-    
+
     # Create the VGG16 model with frozen base layers (feature extraction)
     pretrained_model = create_vgg16_model(
-        input_shape=(IMG_HEIGHT, IMG_WIDTH, 3), 
+        input_shape=(IMG_HEIGHT, IMG_WIDTH, 3),
         num_classes=num_classes,
         trainable=False  # Start with frozen base layers
     )
-    
+
     # Define callbacks for the pre-trained model
     early_stopping_pretrained = EarlyStopping(
         monitor='val_loss',
         patience=5,
         restore_best_weights=True
     )
-    
+
     checkpoint_pretrained = ModelCheckpoint(
         'vgg16_feature_extraction_best.h5',
         monitor='val_accuracy',
         save_best_only=True,
         mode='max'
     )
-    
+
     # Train the model with frozen base layers (feature extraction)
     EPOCHS_PRETRAINED = 20
-    
+
     # Record start time
     start_time_pretrained = time.time()
-    
+
     pretrained_history = pretrained_model.fit(
         train_generator_pretrained,
         steps_per_epoch=train_generator_pretrained.samples // BATCH_SIZE,
@@ -641,47 +642,47 @@ def main():
         validation_steps=validation_generator_pretrained.samples // BATCH_SIZE,
         callbacks=[early_stopping_pretrained, checkpoint_pretrained]
     )
-    
+
     # Record end time
     feature_extraction_time = time.time() - start_time_pretrained
     print(f"Feature extraction training time: {feature_extraction_time:.2f} seconds")
-    
+
     # Plot the training history
     plot_training_history(pretrained_history, 'VGG16 Feature Extraction')
     plot_loss_accuracy(pretrained_history)
-    
+
     # Now, let's fine-tune the model by unfreezing some of the top layers of the VGG16 base model
     # Unfreeze the top 2 blocks of VGG16
     for layer in pretrained_model.layers[15:]:
         layer.trainable = True
-    
+
     # Recompile the model with a lower learning rate
     pretrained_model.compile(
         optimizer=Adam(learning_rate=1e-5),  # Much lower learning rate for fine-tuning
         loss='categorical_crossentropy',
         metrics=['accuracy', Precision(), Recall()]
     )
-    
+
     # Define callbacks for fine-tuning
     early_stopping_finetuning = EarlyStopping(
         monitor='val_loss',
         patience=10,
         restore_best_weights=True
     )
-    
+
     checkpoint_finetuning = ModelCheckpoint(
         'vgg16_finetuned_best.h5',
         monitor='val_accuracy',
         save_best_only=True,
         mode='max'
     )
-    
+
     # Fine-tune the model
     EPOCHS_FINETUNING = 20
-    
+
     # Record start time
     start_time_finetuning = time.time()
-    
+
     finetuning_history = pretrained_model.fit(
         train_generator_pretrained,
         steps_per_epoch=train_generator_pretrained.samples // BATCH_SIZE,
@@ -690,32 +691,32 @@ def main():
         validation_steps=validation_generator_pretrained.samples // BATCH_SIZE,
         callbacks=[early_stopping_finetuning, checkpoint_finetuning]
     )
-    
+
     # Record end time
     finetuning_time = time.time() - start_time_finetuning
     print(f"Fine-tuning time: {finetuning_time:.2f} seconds")
     print(f"Total transfer learning time: {feature_extraction_time + finetuning_time:.2f} seconds")
-    
+
     # Plot the fine-tuning history
     plot_training_history(finetuning_history, 'VGG16 Fine-Tuning')
     plot_loss_accuracy(finetuning_history)
-    
+
     # Evaluate all models on the test set
     print("\nEvaluating Baseline Model:")
     baseline_evaluation = baseline_model.evaluate(test_generator)
     print(f"Test Loss: {baseline_evaluation[0]:.4f}")
     print(f"Test Accuracy: {baseline_evaluation[1]:.4f}")
-    
+
     print("\nEvaluating Deeper Model:")
     deeper_evaluation = deeper_model.evaluate(test_generator)
     print(f"Test Loss: {deeper_evaluation[0]:.4f}")
     print(f"Test Accuracy: {deeper_evaluation[1]:.4f}")
-    
+
     print("\nEvaluating Fine-tuned VGG16 Model:")
     pretrained_evaluation = pretrained_model.evaluate(test_generator_pretrained)
     print(f"Test Loss: {pretrained_evaluation[0]:.4f}")
     print(f"Test Accuracy: {pretrained_evaluation[1]:.4f}")
-    
+
     print("\nTraining Time Comparison:")
     print(f"Baseline Model: {baseline_training_time:.2f} seconds")
     print(f"Deeper Model: {deeper_training_time:.2f} seconds")
