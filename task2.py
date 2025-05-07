@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import random
+import argparse
 from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -261,35 +262,24 @@ def create_deeper_model(input_shape, num_classes):
     """Create a deeper CNN model with specified architecture"""
     model = Sequential([
         Input(shape=input_shape),
-        Rescaling(1. / 255),
+        # Removed Rescaling layer as data is already rescaled in the data generator
 
-        Conv2D(128, (3, 3), padding='same', activation=None),
-        BatchNormalization(),
+        Conv2D(32, kernel_size=(3, 3), activation='relu'),
+        Conv2D(64, (3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
         Dropout(0.25),
-        tf.keras.layers.Activation('relu'),
-        MaxPooling2D((2, 2)),
 
-        Conv2D(128, (3, 3), padding='same', activation=None),
-        BatchNormalization(),
+        Conv2D(128, (3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
         Dropout(0.25),
-        tf.keras.layers.Activation('relu'),
-        MaxPooling2D((2, 2)),
-
-        Conv2D(128, (3, 3), padding='same', activation=None),
-        BatchNormalization(),
-        Dropout(0.25),
-        tf.keras.layers.Activation('relu'),
-        MaxPooling2D((2, 2)),
 
         Flatten(),
-        Dense(256, activation='relu'),
         Dense(128, activation='relu'),
-        Dense(64, activation='relu'),
         Dense(num_classes, activation='softmax')
     ])
 
     model.compile(
-        optimizer=Adam(learning_rate=0.0005),
+        optimizer=Adam(learning_rate=0.0001),  # Reduced learning rate for better stability
         loss='categorical_crossentropy',
         metrics=['accuracy', Precision(), Recall(), F1Score()]
     )
@@ -452,84 +442,11 @@ def plot_confusion_matrix(cm, class_names, title):
     plt.show()
 
 
-def main():
-    # Dataset path
-    path = os.path.join('data', 'pest')
-
-    train_path = os.path.join(path, 'train')
-    test_path = os.path.join(path, 'test')
-
-    # Getting the number of classes and their names
-    classes = os.listdir(train_path)
-    num_classes = len(classes)
-
-    print(f'Total number of classes: {num_classes}')
-    print(f'Classes: {classes}')
-
-    # Counting images in each dataset
-    train_total, train_counts = count_images(train_path)
-    test_total, test_counts = count_images(test_path)
-
-    print(f'Number of training images: {train_total} (80% used for training, 20% for validation)')
-    print(f'Number of test images: {test_total}')
-    print(f'Total number of images: {train_total + test_total}')
-
-    # Visualize sample images from each class
-    visualize_samples(train_path, "Training Data")
-    visualize_samples(test_path, "Test Data")
-
-    # Generate augmented images
-    input_base_dir = os.path.join('data', 'pest')
-    output_base_dir = os.path.join('data', 'augmented_images', 'pest')
-    generate_augmented_images(input_base_dir, output_base_dir)
-
-    # Define image size for the model
-    IMG_HEIGHT = 224
-    IMG_WIDTH = 224
-    BATCH_SIZE = 32
-
-    train_datagen = ImageDataGenerator(
-        rescale=1. / 255,
-        validation_split=0.2,
-        rotation_range=20,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        fill_mode='nearest'
-    )
-
-    train_generator = train_datagen.flow_from_directory(
-        train_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
-        class_mode='categorical',
-        shuffle=True,
-        subset='training'
-    )
-
-    validation_generator = train_datagen.flow_from_directory(
-        train_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
-        class_mode='categorical',
-        shuffle=False,
-        subset='validation'
-    )
-
-    val_test_datagen = ImageDataGenerator(rescale=1. / 255)
-
-    test_generator = val_test_datagen.flow_from_directory(
-        test_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
-        class_mode='categorical',
-        shuffle=False
-    )
+def train_baseline_model(train_generator, validation_generator, input_shape, num_classes, batch_size):
+    """Train the baseline CNN model"""
+    print("\n=== Training Baseline CNN Model ===")
 
     # Create the baseline model
-    input_shape = (IMG_HEIGHT, IMG_WIDTH, 3)  # RGB images
     baseline_model = create_baseline_model(input_shape, num_classes)
 
     # Define callbacks
@@ -554,10 +471,10 @@ def main():
 
     baseline_history = baseline_model.fit(
         train_generator,
-        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, BATCH_SIZE),
+        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, batch_size),
         epochs=EPOCHS,
         validation_data=validation_generator,
-        validation_steps=calculate_steps_per_epoch(validation_generator.samples, BATCH_SIZE),
+        validation_steps=calculate_steps_per_epoch(validation_generator.samples, batch_size),
         callbacks=[early_stopping, checkpoint]
     )
 
@@ -568,6 +485,13 @@ def main():
     # Plot the training history for the baseline model
     plot_training_history(baseline_history, 'Baseline Model')
     plot_loss_accuracy(baseline_history, 'Baseline Model')
+
+    return baseline_model, baseline_history, baseline_training_time
+
+
+def train_deeper_model(train_generator, validation_generator, input_shape, num_classes, batch_size):
+    """Train the deeper CNN model"""
+    print("\n=== Training Deeper CNN Model ===")
 
     # Create the deeper model
     deeper_model = create_deeper_model(input_shape, num_classes)
@@ -589,16 +513,37 @@ def main():
     # Train the deeper model
     EPOCHS_DEEPER = 30
 
+    # Calculate class weights to handle class imbalance
+    class_counts = {}
+    for class_name, class_idx in train_generator.class_indices.items():
+        class_counts[class_idx] = 0
+
+    # Count samples per class
+    for i in range(len(train_generator.filenames)):
+        class_name = train_generator.filenames[i].split(os.sep)[0]
+        class_idx = train_generator.class_indices[class_name]
+        class_counts[class_idx] += 1
+
+    # Calculate class weights
+    total_samples = sum(class_counts.values())
+    n_classes = len(class_counts)
+    class_weights = {}
+    for class_idx, count in class_counts.items():
+        class_weights[class_idx] = total_samples / (n_classes * count)
+
+    print("Class weights:", class_weights)
+
     # Record start time
     start_time_deeper = time.time()
 
     deeper_history = deeper_model.fit(
         train_generator,
-        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, BATCH_SIZE),
+        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, batch_size),
         epochs=EPOCHS_DEEPER,
         validation_data=validation_generator,
-        validation_steps=calculate_steps_per_epoch(validation_generator.samples, BATCH_SIZE),
-        callbacks=[early_stopping_deeper, checkpoint_deeper]
+        validation_steps=calculate_steps_per_epoch(validation_generator.samples, batch_size),
+        callbacks=[early_stopping_deeper, checkpoint_deeper],
+        class_weight=class_weights  # Add class weights
     )
 
     # Record end time
@@ -609,8 +554,14 @@ def main():
     plot_training_history(deeper_history, 'Deeper Model')
     plot_loss_accuracy(deeper_history, 'Deeper Model')
 
-    # Create data generators with appropriate preprocessing for the pre-trained model
+    return deeper_model, deeper_history, deeper_training_time
 
+
+def train_transfer_learning_model(train_path, test_path, input_shape, num_classes, batch_size):
+    """Train the transfer learning model using VGG16"""
+    print("\n=== Training Transfer Learning Model (VGG16) ===")
+
+    # Create data generators with appropriate preprocessing for the pre-trained model
     train_datagen_pretrained = ImageDataGenerator(
         preprocessing_function=preprocess_input,
         validation_split=0.2,
@@ -630,8 +581,8 @@ def main():
     # Create data generators
     train_generator_pretrained = train_datagen_pretrained.flow_from_directory(
         train_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
+        target_size=(input_shape[0], input_shape[1]),
+        batch_size=batch_size,
         class_mode='categorical',
         shuffle=True,
         subset='training'
@@ -639,8 +590,8 @@ def main():
 
     validation_generator_pretrained = train_datagen_pretrained.flow_from_directory(
         train_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
+        target_size=(input_shape[0], input_shape[1]),
+        batch_size=batch_size,
         class_mode='categorical',
         shuffle=False,
         subset='validation'
@@ -648,15 +599,15 @@ def main():
 
     test_generator_pretrained = val_test_datagen_pretrained.flow_from_directory(
         test_path,
-        target_size=(IMG_HEIGHT, IMG_WIDTH),
-        batch_size=BATCH_SIZE,
+        target_size=(input_shape[0], input_shape[1]),
+        batch_size=batch_size,
         class_mode='categorical',
         shuffle=False
     )
 
     # Create the VGG16 model with frozen base layers (feature extraction)
     pretrained_model = create_vgg16_model(
-        input_shape=(IMG_HEIGHT, IMG_WIDTH, 3),
+        input_shape=input_shape,
         num_classes=num_classes,
         trainable=False  # Start with frozen base layers
     )
@@ -683,10 +634,10 @@ def main():
 
     pretrained_history = pretrained_model.fit(
         train_generator_pretrained,
-        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, BATCH_SIZE),
+        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, batch_size),
         epochs=EPOCHS_PRETRAINED,
         validation_data=validation_generator_pretrained,
-        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, BATCH_SIZE),
+        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, batch_size),
         callbacks=[early_stopping_pretrained, checkpoint_pretrained]
     )
 
@@ -732,10 +683,10 @@ def main():
 
     finetuning_history = pretrained_model.fit(
         train_generator_pretrained,
-        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, BATCH_SIZE),
+        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, batch_size),
         epochs=EPOCHS_FINETUNING,
         validation_data=validation_generator_pretrained,
-        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, BATCH_SIZE),
+        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, batch_size),
         callbacks=[early_stopping_finetuning, checkpoint_finetuning]
     )
 
@@ -748,17 +699,21 @@ def main():
     plot_training_history(finetuning_history, 'VGG16 Fine-Tuning')
     plot_loss_accuracy(finetuning_history, 'VGG16 Fine-Tuning')
 
-    # Evaluate all models on the test set
-    print("\nEvaluating Baseline Model:")
-    baseline_evaluation = baseline_model.evaluate(test_generator)
-    print(f"Test Loss: {baseline_evaluation[0]:.4f}")
-    print(f"Test Accuracy: {baseline_evaluation[1]:.4f}")
-    print(f"Test F1 Score: {baseline_evaluation[3]:.4f}")
+    return pretrained_model, test_generator_pretrained, feature_extraction_time + finetuning_time
 
-    # Generate predictions for baseline model
+
+def evaluate_model(model, test_generator, model_name, batch_size, class_names):
+    """Evaluate a model on the test set"""
+    print(f"\nEvaluating {model_name}:")
+    evaluation = model.evaluate(test_generator)
+    print(f"Test Loss: {evaluation[0]:.4f}")
+    print(f"Test Accuracy: {evaluation[1]:.4f}")
+    print(f"Test F1 Score: {evaluation[3]:.4f}")
+
+    # Generate predictions
     test_generator.reset()
-    y_pred_baseline = baseline_model.predict(test_generator, steps=calculate_steps_per_epoch(test_generator.samples, BATCH_SIZE))
-    y_pred_baseline_classes = np.argmax(y_pred_baseline, axis=1)
+    y_pred = model.predict(test_generator, steps=calculate_steps_per_epoch(test_generator.samples, batch_size))
+    y_pred_classes = np.argmax(y_pred, axis=1)
 
     # Get true labels
     test_generator.reset()
@@ -774,80 +729,150 @@ def main():
 
     # Ensure we have the correct number of predictions
     y_true = y_true[:test_generator.samples]
-    y_pred_baseline_classes = y_pred_baseline_classes[:test_generator.samples]
+    y_pred_classes = y_pred_classes[:test_generator.samples]
 
-    # Get class names
+    # Generate classification report
+    print(f"\nClassification Report - {model_name}:")
+    print(classification_report(y_true, y_pred_classes, target_names=class_names))
+
+    # Generate and plot confusion matrix
+    cm = confusion_matrix(y_true, y_pred_classes)
+    plot_confusion_matrix(cm, class_names, model_name)
+
+
+def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Train and evaluate CNN models for image classification.')
+    parser.add_argument('models', nargs='?', type=str, default='1,2,3',
+                        help='Comma-separated list of models to run: 1=basic CNN, 2=deep CNN, 3=transfer learning. Default: all models')
+    args = parser.parse_args()
+
+    # Parse the models to run
+    models_to_run = args.models.split(',')
+    print(f"Running models: {models_to_run}")
+
+    # Dataset path
+    path = os.path.join('data', 'pest')
+    train_path = os.path.join(path, 'train')
+    test_path = os.path.join(path, 'test')
+
+    # Getting the number of classes and their names
+    classes = os.listdir(train_path)
+    num_classes = len(classes)
+
+    print(f'Total number of classes: {num_classes}')
+    print(f'Classes: {classes}')
+
+    # Counting images in each dataset
+    train_total, train_counts = count_images(train_path)
+    test_total, test_counts = count_images(test_path)
+
+    print(f'Number of training images: {train_total} (80% used for training, 20% for validation)')
+    print(f'Number of test images: {test_total}')
+    print(f'Total number of images: {train_total + test_total}')
+
+    # Visualize sample images from each class
+    visualize_samples(train_path, "Training Data")
+    visualize_samples(test_path, "Test Data")
+
+    # Generate augmented images
+    input_base_dir = os.path.join('data', 'pest')
+    output_base_dir = os.path.join('data', 'augmented_images', 'pest')
+    generate_augmented_images(input_base_dir, output_base_dir)
+
+    # Define image size for the model
+    IMG_HEIGHT = 224
+    IMG_WIDTH = 224
+    BATCH_SIZE = 32
+    input_shape = (IMG_HEIGHT, IMG_WIDTH, 3)  # RGB images
+
+    # Create data generators for baseline and deeper models
+    train_datagen = ImageDataGenerator(
+        rescale=1. / 255,
+        validation_split=0.2,
+        rotation_range=20,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        fill_mode='nearest'
+    )
+
+    train_generator = train_datagen.flow_from_directory(
+        train_path,
+        target_size=(IMG_HEIGHT, IMG_WIDTH),
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        shuffle=True,
+        subset='training'
+    )
+
+    validation_generator = train_datagen.flow_from_directory(
+        train_path,
+        target_size=(IMG_HEIGHT, IMG_WIDTH),
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        shuffle=False,
+        subset='validation'
+    )
+
+    val_test_datagen = ImageDataGenerator(rescale=1. / 255)
+
+    test_generator = val_test_datagen.flow_from_directory(
+        test_path,
+        target_size=(IMG_HEIGHT, IMG_WIDTH),
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        shuffle=False
+    )
+
+    # Get class names for evaluation
     class_names = list(test_generator.class_indices.keys())
 
-    # Generate classification report
-    print("\nClassification Report - Baseline Model:")
-    print(classification_report(y_true, y_pred_baseline_classes, target_names=class_names))
+    # Initialize variables to store models and training times
+    baseline_model = None
+    deeper_model = None
+    pretrained_model = None
+    test_generator_pretrained = None
+    baseline_training_time = 0
+    deeper_training_time = 0
+    transfer_learning_time = 0
 
-    # Generate and plot confusion matrix
-    cm_baseline = confusion_matrix(y_true, y_pred_baseline_classes)
-    plot_confusion_matrix(cm_baseline, class_names, "Baseline Model")
+    # Train models based on command-line arguments
+    if '1' in models_to_run:
+        baseline_model, baseline_history, baseline_training_time = train_baseline_model(
+            train_generator, validation_generator, input_shape, num_classes, BATCH_SIZE
+        )
 
-    print("\nEvaluating Deeper Model:")
-    deeper_evaluation = deeper_model.evaluate(test_generator)
-    print(f"Test Loss: {deeper_evaluation[0]:.4f}")
-    print(f"Test Accuracy: {deeper_evaluation[1]:.4f}")
-    print(f"Test F1 Score: {deeper_evaluation[3]:.4f}")
+    if '2' in models_to_run:
+        deeper_model, deeper_history, deeper_training_time = train_deeper_model(
+            train_generator, validation_generator, input_shape, num_classes, BATCH_SIZE
+        )
 
-    # Generate predictions for deeper model
-    test_generator.reset()
-    y_pred_deeper = deeper_model.predict(test_generator, steps=calculate_steps_per_epoch(test_generator.samples, BATCH_SIZE))
-    y_pred_deeper_classes = np.argmax(y_pred_deeper, axis=1)
+    if '3' in models_to_run:
+        pretrained_model, test_generator_pretrained, transfer_learning_time = train_transfer_learning_model(
+            train_path, test_path, input_shape, num_classes, BATCH_SIZE
+        )
 
-    # Ensure we have the correct number of predictions
-    y_pred_deeper_classes = y_pred_deeper_classes[:test_generator.samples]
+    # Evaluate models that were trained
+    if baseline_model:
+        evaluate_model(baseline_model, test_generator, "Baseline Model", BATCH_SIZE, class_names)
 
-    # Generate classification report
-    print("\nClassification Report - Deeper Model:")
-    print(classification_report(y_true, y_pred_deeper_classes, target_names=class_names))
+    if deeper_model:
+        evaluate_model(deeper_model, test_generator, "Deeper Model", BATCH_SIZE, class_names)
 
-    # Generate and plot confusion matrix
-    cm_deeper = confusion_matrix(y_true, y_pred_deeper_classes)
-    plot_confusion_matrix(cm_deeper, class_names, "Deeper Model")
+    if pretrained_model:
+        evaluate_model(pretrained_model, test_generator_pretrained, "Fine-tuned VGG16 Model", BATCH_SIZE, class_names)
 
-    print("\nEvaluating Fine-tuned VGG16 Model:")
-    pretrained_evaluation = pretrained_model.evaluate(test_generator_pretrained)
-    print(f"Test Loss: {pretrained_evaluation[0]:.4f}")
-    print(f"Test Accuracy: {pretrained_evaluation[1]:.4f}")
-    print(f"Test F1 Score: {pretrained_evaluation[3]:.4f}")
-
-    # Generate predictions for pretrained model
-    test_generator_pretrained.reset()
-    y_pred_pretrained = pretrained_model.predict(test_generator_pretrained, steps=calculate_steps_per_epoch(test_generator_pretrained.samples, BATCH_SIZE))
-    y_pred_pretrained_classes = np.argmax(y_pred_pretrained, axis=1)
-
-    # Get true labels for pretrained model
-    test_generator_pretrained.reset()
-    y_true_pretrained = np.array([])
-    for i in range(len(test_generator_pretrained)):
-        batch_x, batch_y = next(test_generator_pretrained)
-        if i == 0:
-            y_true_pretrained = np.argmax(batch_y, axis=1)
-        else:
-            y_true_pretrained = np.concatenate([y_true_pretrained, np.argmax(batch_y, axis=1)])
-        if len(y_true_pretrained) >= test_generator_pretrained.samples:
-            break
-
-    # Ensure we have the correct number of predictions
-    y_true_pretrained = y_true_pretrained[:test_generator_pretrained.samples]
-    y_pred_pretrained_classes = y_pred_pretrained_classes[:test_generator_pretrained.samples]
-
-    # Generate classification report
-    print("\nClassification Report - Fine-tuned VGG16 Model:")
-    print(classification_report(y_true_pretrained, y_pred_pretrained_classes, target_names=class_names))
-
-    # Generate and plot confusion matrix
-    cm_pretrained = confusion_matrix(y_true_pretrained, y_pred_pretrained_classes)
-    plot_confusion_matrix(cm_pretrained, class_names, "Fine-tuned VGG16 Model")
-
+    # Print training time comparison for models that were trained
     print("\nTraining Time Comparison:")
-    print(f"Baseline Model: {baseline_training_time:.2f} seconds")
-    print(f"Deeper Model: {deeper_training_time:.2f} seconds")
-    print(f"VGG16 (Feature Extraction + Fine-Tuning): {feature_extraction_time + finetuning_time:.2f} seconds")
+    if baseline_model:
+        print(f"Baseline Model: {baseline_training_time:.2f} seconds")
+    if deeper_model:
+        print(f"Deeper Model: {deeper_training_time:.2f} seconds")
+    if pretrained_model:
+        print(f"VGG16 (Feature Extraction + Fine-Tuning): {transfer_learning_time:.2f} seconds")
 
 
 if __name__ == "__main__":
