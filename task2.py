@@ -29,6 +29,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropou
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.metrics import Precision, Recall
+from tensorflow.keras.regularizers import l2
 from sklearn.metrics import classification_report, confusion_matrix
 import time
 
