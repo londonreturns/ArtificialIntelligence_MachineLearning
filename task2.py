@@ -14,7 +14,6 @@ The script has two parts:
 """
 
 # Importing Libraries
-import numpy as np
 import matplotlib.pyplot as plt
 import os
 import random
@@ -25,10 +24,10 @@ from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, Input
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.metrics import Precision, Recall
+from tensorflow.keras.metrics import Precision, Recall, F1Score
 from tensorflow.keras.regularizers import l2
 from sklearn.metrics import classification_report, confusion_matrix
 import time
@@ -138,7 +137,12 @@ def create_validation_split(train_dir, val_dir, val_size=0.2):
 
 
 def generate_augmented_images(input_base_dir, output_base_dir):
-    """Generate and save augmented images to disk"""
+    """Generate and save augmented images to disk if not already generated"""
+    # Check if augmented images already exist
+    if os.path.exists(output_base_dir) and any(os.scandir(output_base_dir)):
+        print("Augmented images already exist. Skipping augmentation.")
+        return
+
     datagen = ImageDataGenerator(
         rotation_range=20,
         width_shift_range=0.2,
@@ -226,40 +230,44 @@ def generate_augmented_images(input_base_dir, output_base_dir):
 
 def create_baseline_model(input_shape, num_classes):
     """Create a baseline CNN model"""
-    model = Sequential([
-        # First convolutional layer
-        Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=input_shape),
-        MaxPooling2D((2, 2)),
+    # Create the model using Sequential
+    model = Sequential()
 
-        # Second convolutional layer
-        Conv2D(64, (3, 3), activation='relu', padding='same'),
-        MaxPooling2D((2, 2)),
+    # Add Input layer first
+    model.add(Input(shape=input_shape))
 
-        # Third convolutional layer
-        Conv2D(128, (3, 3), activation='relu', padding='same'),
-        MaxPooling2D((2, 2)),
+    # First convolutional layer
+    model.add(Conv2D(32, (3, 3), activation='relu', padding='same'))
+    model.add(MaxPooling2D((2, 2)))
 
-        # Flatten the output for the fully connected layers
-        Flatten(),
+    # Second convolutional layer
+    model.add(Conv2D(64, (3, 3), activation='relu', padding='same'))
+    model.add(MaxPooling2D((2, 2)))
 
-        # First fully connected layer
-        Dense(512, activation='relu'),
+    # Third convolutional layer
+    model.add(Conv2D(128, (3, 3), activation='relu', padding='same'))
+    model.add(MaxPooling2D((2, 2)))
 
-        # Second fully connected layer
-        Dense(256, activation='relu'),
+    # Flatten the output for the fully connected layers
+    model.add(Flatten())
 
-        # Third fully connected layer
-        Dense(128, activation='relu'),
+    # First fully connected layer
+    model.add(Dense(512, activation='relu'))
 
-        # Output layer
-        Dense(num_classes, activation='softmax')
-    ])
+    # Second fully connected layer
+    model.add(Dense(256, activation='relu'))
+
+    # Third fully connected layer
+    model.add(Dense(128, activation='relu'))
+
+    # Output layer
+    model.add(Dense(num_classes, activation='softmax'))
 
     # Compile the model
     model.compile(
         optimizer=Adam(learning_rate=0.001),
         loss='categorical_crossentropy',
-        metrics=['accuracy', Precision(), Recall()]
+        metrics=['accuracy', Precision(), Recall(), F1Score()]
     )
 
     return model
@@ -267,46 +275,50 @@ def create_baseline_model(input_shape, num_classes):
 
 def create_deeper_model(input_shape, num_classes):
     """Create a regularized deeper CNN model to reduce overfitting"""
-    model = Sequential([
-        # First convolutional block
-        Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=input_shape, kernel_regularizer=l2(0.001)),
-        BatchNormalization(),
-        Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-        MaxPooling2D((2, 2)),
-        Dropout(0.3),
+    # Create the model using Sequential
+    model = Sequential()
 
-        # Second convolutional block
-        Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-        BatchNormalization(),
-        Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-        MaxPooling2D((2, 2)),
-        Dropout(0.3),
+    # Add Input layer first
+    model.add(Input(shape=input_shape))
 
-        # Third convolutional block
-        Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-        BatchNormalization(),
-        Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-        MaxPooling2D((2, 2)),
-        Dropout(0.4),
+    # First convolutional block
+    model.add(Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(BatchNormalization())
+    model.add(Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Dropout(0.3))
 
-        # Flatten and Dense layers
-        Flatten(),
-        Dense(256, activation='relu', kernel_regularizer=l2(0.001)),
-        BatchNormalization(),
-        Dropout(0.5),
+    # Second convolutional block
+    model.add(Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(BatchNormalization())
+    model.add(Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Dropout(0.3))
 
-        Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
-        BatchNormalization(),
-        Dropout(0.5),
+    # Third convolutional block
+    model.add(Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(BatchNormalization())
+    model.add(Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Dropout(0.4))
 
-        Dense(num_classes, activation='softmax')
-    ])
+    # Flatten and Dense layers
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu', kernel_regularizer=l2(0.001)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.5))
+
+    model.add(Dense(128, activation='relu', kernel_regularizer=l2(0.001)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.5))
+
+    model.add(Dense(num_classes, activation='softmax'))
 
     # Compile the model
     model.compile(
         optimizer=Adam(learning_rate=0.0005),
         loss='categorical_crossentropy',
-        metrics=['accuracy', Precision(), Recall()]
+        metrics=['accuracy', Precision(), Recall(), F1Score()]
     )
 
     return model
@@ -345,7 +357,7 @@ def create_vgg16_model(input_shape, num_classes, trainable=False):
     model.compile(
         optimizer=Adam(learning_rate=0.0001),
         loss='categorical_crossentropy',
-        metrics=['accuracy', Precision(), Recall()]
+        metrics=['accuracy', Precision(), Recall(), F1Score()]
     )
 
     return model
@@ -353,6 +365,10 @@ def create_vgg16_model(input_shape, num_classes, trainable=False):
 
 def plot_training_history(history, title):
     """Plot the training history"""
+    # Create output directory if it doesn't exist
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+
     plt.figure(figsize=(12, 5))
 
     # Plot training & validation accuracy
@@ -374,11 +390,21 @@ def plot_training_history(history, title):
     plt.legend(['Train', 'Validation'], loc='upper left')
 
     plt.tight_layout()
+
+    # Save the figure to the output directory
+    filename = f"{output_dir}\\{title.replace(' ', '_')}_history.png"
+    plt.savefig(filename)
+    print(f"Saved training history plot to {filename}")
+
     plt.show()
 
 
-def plot_loss_accuracy(history):
+def plot_loss_accuracy(history, title="Model"):
     """Plot training and validation loss and accuracy"""
+    # Create output directory if it doesn't exist
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+
     train_loss = history.history['loss']
     val_loss = history.history['val_loss']
 
@@ -391,7 +417,7 @@ def plot_loss_accuracy(history):
     plt.plot(range(1, len(val_loss) + 1), val_loss, label='Validation Loss', color='orange')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
-    plt.title('Training and Validatation Loss')
+    plt.title(f'{title} - Training and Validation Loss')
     plt.legend()
 
     plt.subplot(1, 2, 2)
@@ -399,8 +425,13 @@ def plot_loss_accuracy(history):
     plt.plot(range(1, len(val_acc) + 1), val_acc, label='Validation Accuracy', color='orange')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
-    plt.title('Training and Validatation Accuracy')
+    plt.title(f'{title} - Training and Validation Accuracy')
     plt.legend()
+
+    # Save the figure to the output directory
+    filename = f"{output_dir}\\{title.replace(' ', '_')}_loss_accuracy.png"
+    plt.savefig(filename)
+    print(f"Saved {title} loss and accuracy plot to {filename}")
 
     plt.show()
 
@@ -522,7 +553,7 @@ def main():
 
     # Plot the training history for the baseline model
     plot_training_history(baseline_history, 'Baseline Model')
-    plot_loss_accuracy(baseline_history)
+    plot_loss_accuracy(baseline_history, 'Baseline Model')
 
     # Create the deeper model
     deeper_model = create_deeper_model(input_shape, num_classes)
@@ -562,7 +593,7 @@ def main():
 
     # Plot the training history for the deeper model
     plot_training_history(deeper_history, 'Deeper Model')
-    plot_loss_accuracy(deeper_history)
+    plot_loss_accuracy(deeper_history, 'Deeper Model')
 
     # Create data generators with appropriate preprocessing for the pre-trained model
     from tensorflow.keras.applications.vgg16 import preprocess_input
@@ -649,7 +680,7 @@ def main():
 
     # Plot the training history
     plot_training_history(pretrained_history, 'VGG16 Feature Extraction')
-    plot_loss_accuracy(pretrained_history)
+    plot_loss_accuracy(pretrained_history, 'VGG16 Feature Extraction')
 
     # Now, let's fine-tune the model by unfreezing some of the top layers of the VGG16 base model
     # Unfreeze the top 2 blocks of VGG16
@@ -660,7 +691,7 @@ def main():
     pretrained_model.compile(
         optimizer=Adam(learning_rate=1e-5),  # Much lower learning rate for fine-tuning
         loss='categorical_crossentropy',
-        metrics=['accuracy', Precision(), Recall()]
+        metrics=['accuracy', Precision(), Recall(), F1Score()]
     )
 
     # Define callbacks for fine-tuning
@@ -699,23 +730,77 @@ def main():
 
     # Plot the fine-tuning history
     plot_training_history(finetuning_history, 'VGG16 Fine-Tuning')
-    plot_loss_accuracy(finetuning_history)
+    plot_loss_accuracy(finetuning_history, 'VGG16 Fine-Tuning')
 
     # Evaluate all models on the test set
     print("\nEvaluating Baseline Model:")
     baseline_evaluation = baseline_model.evaluate(test_generator)
     print(f"Test Loss: {baseline_evaluation[0]:.4f}")
     print(f"Test Accuracy: {baseline_evaluation[1]:.4f}")
+    print(f"Test F1 Score: {baseline_evaluation[3]:.4f}")
+
+    # Generate predictions for baseline model
+    test_generator.reset()
+    y_pred_baseline = baseline_model.predict(test_generator, steps=len(test_generator))
+    y_pred_baseline_classes = y_pred_baseline.argmax(axis=1)
+
+    # Get true labels
+    y_true = test_generator.classes
+
+    # Get class names
+    class_names = list(test_generator.class_indices.keys())
+
+    # Display classification report
+    print("\nClassification Report (Baseline Model):")
+    print(classification_report(y_true, y_pred_baseline_classes, target_names=class_names))
+
+    # Display confusion matrix
+    print("\nConfusion Matrix (Baseline Model):")
+    cm = confusion_matrix(y_true, y_pred_baseline_classes)
+    print(cm)
 
     print("\nEvaluating Deeper Model:")
     deeper_evaluation = deeper_model.evaluate(test_generator)
     print(f"Test Loss: {deeper_evaluation[0]:.4f}")
     print(f"Test Accuracy: {deeper_evaluation[1]:.4f}")
+    print(f"Test F1 Score: {deeper_evaluation[3]:.4f}")
+
+    # Generate predictions for deeper model
+    test_generator.reset()
+    y_pred_deeper = deeper_model.predict(test_generator, steps=len(test_generator))
+    y_pred_deeper_classes = y_pred_deeper.argmax(axis=1)
+
+    # Display classification report
+    print("\nClassification Report (Deeper Model):")
+    print(classification_report(y_true, y_pred_deeper_classes, target_names=class_names))
+
+    # Display confusion matrix
+    print("\nConfusion Matrix (Deeper Model):")
+    cm = confusion_matrix(y_true, y_pred_deeper_classes)
+    print(cm)
 
     print("\nEvaluating Fine-tuned VGG16 Model:")
     pretrained_evaluation = pretrained_model.evaluate(test_generator_pretrained)
     print(f"Test Loss: {pretrained_evaluation[0]:.4f}")
     print(f"Test Accuracy: {pretrained_evaluation[1]:.4f}")
+    print(f"Test F1 Score: {pretrained_evaluation[3]:.4f}")
+
+    # Generate predictions for fine-tuned VGG16 model
+    test_generator_pretrained.reset()
+    y_pred_pretrained = pretrained_model.predict(test_generator_pretrained, steps=len(test_generator_pretrained))
+    y_pred_pretrained_classes = y_pred_pretrained.argmax(axis=1)
+
+    # Get true labels for pretrained model
+    y_true_pretrained = test_generator_pretrained.classes
+
+    # Display classification report
+    print("\nClassification Report (Fine-tuned VGG16 Model):")
+    print(classification_report(y_true_pretrained, y_pred_pretrained_classes, target_names=class_names))
+
+    # Display confusion matrix
+    print("\nConfusion Matrix (Fine-tuned VGG16 Model):")
+    cm = confusion_matrix(y_true_pretrained, y_pred_pretrained_classes)
+    print(cm)
 
     print("\nTraining Time Comparison:")
     print(f"Baseline Model: {baseline_training_time:.2f} seconds")
