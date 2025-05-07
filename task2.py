@@ -15,6 +15,7 @@ The script has two parts:
 
 # Importing Libraries
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import random
 from PIL import Image
@@ -262,7 +263,6 @@ def create_deeper_model(input_shape, num_classes):
         Input(shape=input_shape),
         Rescaling(1. / 255),
 
-        # Repeat the block 3 times
         Conv2D(128, (3, 3), padding='same', activation=None),
         BatchNormalization(),
         Dropout(0.25),
@@ -406,6 +406,52 @@ def plot_loss_accuracy(history, title="Model"):
     plt.show()
 
 
+def calculate_steps_per_epoch(num_samples, batch_size):
+    """Calculate the correct steps_per_epoch value"""
+    # Integer division
+    steps = num_samples // batch_size
+    # If there's a remainder, add one more step
+    if num_samples % batch_size > 0:
+        steps += 1
+    return steps
+
+
+def plot_confusion_matrix(cm, class_names, title):
+    """Plot confusion matrix and save to output directory"""
+    # Create output directory if it doesn't exist
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.figure(figsize=(10, 8))
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title(f'{title} - Confusion Matrix')
+    plt.colorbar()
+
+    # Add labels to the plot
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45, ha='right')
+    plt.yticks(tick_marks, class_names)
+
+    # Add text annotations
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            plt.text(j, i, format(cm[i, j], 'd'),
+                     horizontalalignment="center",
+                     color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+
+    # Save the figure to the output directory
+    filename = f"{output_dir}\\{title.replace(' ', '_')}_confusion_matrix.png"
+    plt.savefig(filename)
+    print(f"Saved confusion matrix plot to {filename}")
+
+    plt.show()
+
+
 def main():
     # Dataset path
     path = os.path.join('data', 'pest')
@@ -508,10 +554,10 @@ def main():
 
     baseline_history = baseline_model.fit(
         train_generator,
-        steps_per_epoch=train_generator.samples // BATCH_SIZE,
+        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, BATCH_SIZE),
         epochs=EPOCHS,
         validation_data=validation_generator,
-        validation_steps=validation_generator.samples // BATCH_SIZE,
+        validation_steps=calculate_steps_per_epoch(validation_generator.samples, BATCH_SIZE),
         callbacks=[early_stopping, checkpoint]
     )
 
@@ -548,10 +594,10 @@ def main():
 
     deeper_history = deeper_model.fit(
         train_generator,
-        steps_per_epoch=train_generator.samples // BATCH_SIZE,
+        steps_per_epoch=calculate_steps_per_epoch(train_generator.samples, BATCH_SIZE),
         epochs=EPOCHS_DEEPER,
         validation_data=validation_generator,
-        validation_steps=validation_generator.samples // BATCH_SIZE,
+        validation_steps=calculate_steps_per_epoch(validation_generator.samples, BATCH_SIZE),
         callbacks=[early_stopping_deeper, checkpoint_deeper]
     )
 
@@ -637,10 +683,10 @@ def main():
 
     pretrained_history = pretrained_model.fit(
         train_generator_pretrained,
-        steps_per_epoch=train_generator_pretrained.samples // BATCH_SIZE,
+        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, BATCH_SIZE),
         epochs=EPOCHS_PRETRAINED,
         validation_data=validation_generator_pretrained,
-        validation_steps=validation_generator_pretrained.samples // BATCH_SIZE,
+        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, BATCH_SIZE),
         callbacks=[early_stopping_pretrained, checkpoint_pretrained]
     )
 
@@ -686,10 +732,10 @@ def main():
 
     finetuning_history = pretrained_model.fit(
         train_generator_pretrained,
-        steps_per_epoch=train_generator_pretrained.samples // BATCH_SIZE,
+        steps_per_epoch=calculate_steps_per_epoch(train_generator_pretrained.samples, BATCH_SIZE),
         epochs=EPOCHS_FINETUNING,
         validation_data=validation_generator_pretrained,
-        validation_steps=validation_generator_pretrained.samples // BATCH_SIZE,
+        validation_steps=calculate_steps_per_epoch(validation_generator_pretrained.samples, BATCH_SIZE),
         callbacks=[early_stopping_finetuning, checkpoint_finetuning]
     )
 
@@ -709,17 +755,94 @@ def main():
     print(f"Test Accuracy: {baseline_evaluation[1]:.4f}")
     print(f"Test F1 Score: {baseline_evaluation[3]:.4f}")
 
+    # Generate predictions for baseline model
+    test_generator.reset()
+    y_pred_baseline = baseline_model.predict(test_generator, steps=calculate_steps_per_epoch(test_generator.samples, BATCH_SIZE))
+    y_pred_baseline_classes = np.argmax(y_pred_baseline, axis=1)
+
+    # Get true labels
+    test_generator.reset()
+    y_true = np.array([])
+    for i in range(len(test_generator)):
+        batch_x, batch_y = next(test_generator)
+        if i == 0:
+            y_true = np.argmax(batch_y, axis=1)
+        else:
+            y_true = np.concatenate([y_true, np.argmax(batch_y, axis=1)])
+        if len(y_true) >= test_generator.samples:
+            break
+
+    # Ensure we have the correct number of predictions
+    y_true = y_true[:test_generator.samples]
+    y_pred_baseline_classes = y_pred_baseline_classes[:test_generator.samples]
+
+    # Get class names
+    class_names = list(test_generator.class_indices.keys())
+
+    # Generate classification report
+    print("\nClassification Report - Baseline Model:")
+    print(classification_report(y_true, y_pred_baseline_classes, target_names=class_names))
+
+    # Generate and plot confusion matrix
+    cm_baseline = confusion_matrix(y_true, y_pred_baseline_classes)
+    plot_confusion_matrix(cm_baseline, class_names, "Baseline Model")
+
     print("\nEvaluating Deeper Model:")
     deeper_evaluation = deeper_model.evaluate(test_generator)
     print(f"Test Loss: {deeper_evaluation[0]:.4f}")
     print(f"Test Accuracy: {deeper_evaluation[1]:.4f}")
     print(f"Test F1 Score: {deeper_evaluation[3]:.4f}")
 
+    # Generate predictions for deeper model
+    test_generator.reset()
+    y_pred_deeper = deeper_model.predict(test_generator, steps=calculate_steps_per_epoch(test_generator.samples, BATCH_SIZE))
+    y_pred_deeper_classes = np.argmax(y_pred_deeper, axis=1)
+
+    # Ensure we have the correct number of predictions
+    y_pred_deeper_classes = y_pred_deeper_classes[:test_generator.samples]
+
+    # Generate classification report
+    print("\nClassification Report - Deeper Model:")
+    print(classification_report(y_true, y_pred_deeper_classes, target_names=class_names))
+
+    # Generate and plot confusion matrix
+    cm_deeper = confusion_matrix(y_true, y_pred_deeper_classes)
+    plot_confusion_matrix(cm_deeper, class_names, "Deeper Model")
+
     print("\nEvaluating Fine-tuned VGG16 Model:")
     pretrained_evaluation = pretrained_model.evaluate(test_generator_pretrained)
     print(f"Test Loss: {pretrained_evaluation[0]:.4f}")
     print(f"Test Accuracy: {pretrained_evaluation[1]:.4f}")
     print(f"Test F1 Score: {pretrained_evaluation[3]:.4f}")
+
+    # Generate predictions for pretrained model
+    test_generator_pretrained.reset()
+    y_pred_pretrained = pretrained_model.predict(test_generator_pretrained, steps=calculate_steps_per_epoch(test_generator_pretrained.samples, BATCH_SIZE))
+    y_pred_pretrained_classes = np.argmax(y_pred_pretrained, axis=1)
+
+    # Get true labels for pretrained model
+    test_generator_pretrained.reset()
+    y_true_pretrained = np.array([])
+    for i in range(len(test_generator_pretrained)):
+        batch_x, batch_y = next(test_generator_pretrained)
+        if i == 0:
+            y_true_pretrained = np.argmax(batch_y, axis=1)
+        else:
+            y_true_pretrained = np.concatenate([y_true_pretrained, np.argmax(batch_y, axis=1)])
+        if len(y_true_pretrained) >= test_generator_pretrained.samples:
+            break
+
+    # Ensure we have the correct number of predictions
+    y_true_pretrained = y_true_pretrained[:test_generator_pretrained.samples]
+    y_pred_pretrained_classes = y_pred_pretrained_classes[:test_generator_pretrained.samples]
+
+    # Generate classification report
+    print("\nClassification Report - Fine-tuned VGG16 Model:")
+    print(classification_report(y_true_pretrained, y_pred_pretrained_classes, target_names=class_names))
+
+    # Generate and plot confusion matrix
+    cm_pretrained = confusion_matrix(y_true_pretrained, y_pred_pretrained_classes)
+    plot_confusion_matrix(cm_pretrained, class_names, "Fine-tuned VGG16 Model")
 
     print("\nTraining Time Comparison:")
     print(f"Baseline Model: {baseline_training_time:.2f} seconds")
