@@ -264,53 +264,39 @@ def create_baseline_model(input_shape, num_classes):
 
 
 def create_deeper_model(input_shape, num_classes):
-    """Create a deeper CNN model with regularization"""
+    """Create a regularized deeper CNN model to reduce overfitting"""
     model = Sequential([
         # First convolutional block
-        Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=input_shape),
+        Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=input_shape, kernel_regularizer=l2(0.001)),
         BatchNormalization(),
-        Conv2D(32, (3, 3), activation='relu', padding='same'),
+        Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
         MaxPooling2D((2, 2)),
-        Dropout(0.25),
+        Dropout(0.3),
 
         # Second convolutional block
-        Conv2D(64, (3, 3), activation='relu', padding='same'),
+        Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
         BatchNormalization(),
-        Conv2D(64, (3, 3), activation='relu', padding='same'),
+        Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
         MaxPooling2D((2, 2)),
-        Dropout(0.25),
+        Dropout(0.3),
 
         # Third convolutional block
-        Conv2D(128, (3, 3), activation='relu', padding='same'),
+        Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
         BatchNormalization(),
-        Conv2D(128, (3, 3), activation='relu', padding='same'),
+        Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
         MaxPooling2D((2, 2)),
-        Dropout(0.25),
+        Dropout(0.4),
 
-        # Fourth convolutional block
-        Conv2D(256, (3, 3), activation='relu', padding='same'),
-        BatchNormalization(),
-        Conv2D(256, (3, 3), activation='relu', padding='same'),
-        MaxPooling2D((2, 2)),
-        Dropout(0.25),
-
-        # Flatten the output for the fully connected layers
+        # Flatten and Dense layers
         Flatten(),
-
-        # Fully connected layers
-        Dense(512, activation='relu'),
+        Dense(256, activation='relu', kernel_regularizer=l2(0.001)),
         BatchNormalization(),
         Dropout(0.5),
 
-        Dense(256, activation='relu'),
+        Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
         BatchNormalization(),
         Dropout(0.5),
 
-        Dense(128, activation='relu'),
-        BatchNormalization(),
-        Dropout(0.5),
-
-        # Output layer
         Dense(num_classes, activation='softmax')
     ])
 
